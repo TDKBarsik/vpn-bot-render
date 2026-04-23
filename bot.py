@@ -4,8 +4,10 @@ import socket
 import time
 import re
 import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 TOKEN = os.environ.get("BOT_TOKEN")
+PORT = int(os.environ.get("PORT", 10000))
 if not TOKEN:
     raise ValueError("BOT_TOKEN not set!")
 
@@ -97,15 +99,30 @@ def process(msg):
     else:
         send_message(cid, "❌ Отправь ссылку.")
 
-print("Бот запущен...")
-off = 0
-while True:
-    try:
-        r = requests.get(f"{API}/getUpdates?offset={off}&timeout=30", timeout=35).json()
-        if r.get('ok'):
-            for u in r.get('result', []):
-                off = u['update_id'] + 1
-                if 'message' in u: process(u['message'])
-    except Exception as e:
-        print(f"Error: {e}")
-        time.sleep(5)
+# Простой HTTP-сервер чтобы Render видел порт
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+    def log_message(self, format, *args):
+        pass
+
+import threading
+def run_bot():
+    print("Бот запущен...")
+    off = 0
+    while True:
+        try:
+            r = requests.get(f"{API}/getUpdates?offset={off}&timeout=30", timeout=35).json()
+            if r.get('ok'):
+                for u in r.get('result', []):
+                    off = u['update_id'] + 1
+                    if 'message' in u: process(u['message'])
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(5)
+
+threading.Thread(target=run_bot, daemon=True).start()
+print(f"Web server on port {PORT}")
+HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
